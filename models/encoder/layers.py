@@ -55,36 +55,36 @@ class ConvBlock(nn.Module):
     
 
 class BackprojectDepth(nn.Module):
-    """Layer to transform a depth image into a point cloud
+    """Layer to transform a depth image into a point cloud (相机坐标系下)
     """
-    def __init__(self, batch_size, height, width, shift_rays_half_pixel=0):
+    def __init__(self, batch_size, height, width, shift_rays_half_pixel=0): # shift_rays_half_pixel: 是否进行半像素偏移（用于抗锯齿）
         super(BackprojectDepth, self).__init__()
 
         self.batch_size = batch_size
         self.height = height
         self.width = width
 
-        meshgrid = np.meshgrid(range(self.width), range(self.height), indexing='xy')
+        meshgrid = np.meshgrid(range(self.width), range(self.height), indexing='xy') # meshgrid(range(W), range(H)) 生成像素坐标网格：
         id_coords = np.stack(meshgrid, axis=0).astype(np.float32)
-        id_coords = torch.from_numpy(id_coords)
+        id_coords = torch.from_numpy(id_coords)  ## (2, H, W)
 
         ones = torch.ones(self.batch_size, 1, self.height * self.width)
 
         pix_coords = torch.unsqueeze(torch.stack(
             [id_coords[0].view(-1), id_coords[1].view(-1)], 0), 0)
-        pix_coords = pix_coords.repeat(batch_size, 1, 1)
+        pix_coords = pix_coords.repeat(batch_size, 1, 1) # 重复 batch_size 份，变成 (B, 2, H*W)
         pix_coords = torch.cat([pix_coords + shift_rays_half_pixel, 
-                                ones], 1)
+                                ones], 1) # 拼接 ones，变成齐次坐标 (B, 3, H*W)：像素坐标 (u, v, 1)
         self.register_buffer("pix_coords", pix_coords)
         self.register_buffer("id_coords", id_coords)
-        self.register_buffer("ones", ones)
+        self.register_buffer("ones", ones)  # 注册为 buffer ，register_buffer 使 pix_coords id_coords ones 作为 模型的一部分（但不会更新）。
         # self.pix_coords = pix_coords
         # self.ones = ones
 
     def forward(self, depth, inv_K):
-        cam_points = torch.matmul(inv_K[:, :3, :3], self.pix_coords.to(depth.device))
-        cam_points = depth.view(self.batch_size, 1, -1) * cam_points
-        cam_points = torch.cat([cam_points, self.ones.to(depth.device)], 1)
+        cam_points = torch.matmul(inv_K[:, :3, :3], self.pix_coords.to(depth.device)) # 将像素坐标转换到相机坐标系下平面内坐标，cam_points 形状 (B, 3, H*W)
+        cam_points = depth.view(self.batch_size, 1, -1) * cam_points # 乘以深度值，变为相机坐标下的世界 (x, y, z)。 形状 (B, 3, H*W)
+        cam_points = torch.cat([cam_points, self.ones.to(depth.device)], 1) # 拼接构成四元数
 
         return cam_points
     

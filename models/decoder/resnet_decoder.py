@@ -13,30 +13,30 @@ class ResnetDecoder(nn.Module):
         super().__init__()
 
         self.cfg = cfg
-        self.use_skips = use_skips
-        self.num_ch_enc = num_ch_enc
-        self.num_ch_dec = np.array(cfg.model.backbone.num_ch_dec)
+        self.use_skips = use_skips # use_skips=True 说明 解码器使用跳跃连接（skip connections），即在上采样过程中，除了当前层的特征外，还会 融合编码器中对应层的特征。
+        self.num_ch_enc = num_ch_enc # np.array([64, 64, 128, 512, 2048])输出的featuresk列表每层的通道数
+        self.num_ch_dec = np.array(cfg.model.backbone.num_ch_dec) # resnet.yaml: [32,32,64,128,256]
 
         self.split_dimensions, scales, biases = get_splits_and_inits(cfg)
         self.num_output_channels = sum(self.split_dimensions)
 
         # decoder
         self.convs = OrderedDict()
-        for i in range(4, -1, -1):
+        for i in range(4, -1, -1): # [4, 3, 2, 1, 0]
             # upconv_0
-            num_ch_in = self.num_ch_enc[-1] if i == 4 else self.num_ch_dec[i + 1]
-            num_ch_out = self.num_ch_dec[i]
+            num_ch_in = self.num_ch_enc[-1] if i == 4 else self.num_ch_dec[i + 1] # [2048, 256, 128, 64, 32]
+            num_ch_out = self.num_ch_dec[i] # [256, 128, 64, 32, 32]
             self.convs[("upconv", i, 0)] = ConvBlock(num_ch_in, num_ch_out)
 
             # upconv_1
-            num_ch_in = self.num_ch_dec[i]
-            if self.use_skips and i > 0:
-                num_ch_in += self.num_ch_enc[i - 1]
-            num_ch_out = self.num_ch_dec[i]
+            num_ch_in = self.num_ch_dec[i] # [256, 128, 64, 32, 32]
+            if self.use_skips and i > 0: # use_skips=True 说明 解码器使用跳跃连接（skip connections），即在上采样过程中，除了当前层的特征外，还会 融合编码器中对应层的特征。
+                num_ch_in += self.num_ch_enc[i - 1] # [256 + 512, 128 + 128, 64 + 64, 32 + 64, 32]
+            num_ch_out = self.num_ch_dec[i] # [256, 128, 64, 32, 32]
             self.convs[("upconv", i, 1)] = ConvBlock(num_ch_in, num_ch_out)
 
         self.decoder = nn.ModuleList(list(self.convs.values()))
-        self.out = nn.Conv2d(self.num_ch_dec[0], self.num_output_channels, 1)
+        self.out = nn.Conv2d(self.num_ch_dec[0], self.num_output_channels, 1) # 32 -> 3+1+3+4+3+9=23
 
         # gaussian parameters initialisation
         start_channel = 0
@@ -78,6 +78,7 @@ class ResnetDepthDecoder(nn.Module):
         self.num_ch_enc = num_ch_enc
         self.num_ch_dec = np.array([16, 32, 64, 128, 256])
 
+        # 如果没有深度信息，那么需要预测所有的深度，若已有unidepth深度信息，则只需要预测除第一层外的深度
         self.num_output_channels = cfg.model.gaussians_per_pixel - 1 if "unidepth" in cfg.model.name else cfg.model.gaussians_per_pixel
 
         # decoder
@@ -109,7 +110,7 @@ class ResnetDepthDecoder(nn.Module):
         elif cfg.model.depth_type == "depth":
             self.activate = nn.Softplus()
         elif cfg.model.depth_type == "depth_inc":
-            self.activate = torch.exp
+            self.activate = torch.exp # 此处使用这个
 
     def forward(self, input_features):
         outputs = {}
@@ -129,4 +130,4 @@ class ResnetDepthDecoder(nn.Module):
                 if self.cfg.model.depth_type in ["disp", "disp_inc"]:
                     output = disp_to_depth(output, self.cfg.model.min_depth, self.cfg.model.max_depth)
                 outputs[("depth", i)] = output
-        return outputs
+        return outputs # outputs[("depth", i)] ：(B * (gaussians_per_pixel - 1), 1, H_i, W_i)

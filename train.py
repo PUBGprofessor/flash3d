@@ -37,6 +37,8 @@ def run_epoch(fabric,
     for batch_idx, inputs in enumerate(train_loader):
         # instruct the model which novel frames to render
         inputs["target_frame_ids"] = cfg.model.gauss_novel_frames
+
+        # 这样吗？
         losses, outputs = trainer(inputs)
 
         optimiser.zero_grad(set_to_none=True)
@@ -86,8 +88,9 @@ def main(cfg: DictConfig):
     output_dir = hydra_cfg['runtime']['output_dir']
     os.chdir(output_dir)
     logging.info(f"Working dir: {output_dir}")
+
     # set up random set
-    torch.set_float32_matmul_precision('high')
+    torch.set_float32_matmul_precision('high') # 高矩阵乘法（MatMul）精度，减少浮点运算误差，增强计算稳定性。
     seed_everything(cfg.run.random_seed)
     # set up training precision
     fabric = Fabric(
@@ -99,11 +102,15 @@ def main(cfg: DictConfig):
     fabric.launch()
     fabric.barrier()
     print("Loaded datasets")
+
     # set up model
     trainer = Trainer(cfg)
     model = trainer.model
     # set up optimiser
     optimiser = optim.Adam(model.parameters_to_train, cfg.optimiser.learning_rate)
+
+
+    # 自定义学习率调度器：训练 前 threshold 步，保持 原学习率。之后降低到 0.1倍的原学习率。
     def lr_lambda(*args):
         threshold = cfg.optimiser.scheduler_lambda_step_size
         if trainer.step < threshold:
@@ -113,6 +120,7 @@ def main(cfg: DictConfig):
     lr_scheduler = optim.lr_scheduler.LambdaLR(
         optimiser, lr_lambda
     )
+
     if cfg.train.ema.use and fabric.is_global_zero:
         ema = EMA(  
             model, 
@@ -123,6 +131,7 @@ def main(cfg: DictConfig):
         ema = fabric.to_device(ema)
     else:
         ema = None
+
     # set up checkpointing
     if (ckpt_dir := model.checkpoint_dir()).exists():
         # resume training
@@ -130,6 +139,7 @@ def main(cfg: DictConfig):
     elif cfg.train.load_weights_folder:
         model.load_model(cfg.train.load_weights_folder)
     trainer, optimiser = fabric.setup(trainer, optimiser)
+
     # set up dataset
     train_dataset, train_loader = create_datasets(cfg, split="train")
     train_loader = fabric.setup_dataloaders(train_loader)
@@ -142,6 +152,7 @@ def main(cfg: DictConfig):
     else:
         val_loader = None
         evaluator = None
+    
     # launch training
     trainer.epoch = 0
     trainer.start_time = time.time()

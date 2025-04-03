@@ -158,6 +158,7 @@ def render_predicted(cfg,
         "visibility_filter" : radii > 0,
         "radii": radii
     }
+    # 这里下面为 多出3DGS的部分，不知道实际有没有执行，看GaussianRasterizer源码的话确实没有返回rendered_image, radii之外的变量，因此不执行
     if len(outputs) >= 4:
         rendered_depth, rendered_alpha = outputs[2:4]
         output["depth"] = rendered_depth

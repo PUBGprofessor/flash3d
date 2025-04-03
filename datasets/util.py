@@ -14,7 +14,7 @@ def create_datasets(cfg, split="val"):
         "kitti": KITTIDataset,
     }[cfg.dataset.name]
 
-    dataset = datasets_dict(cfg, split=split)
+    dataset = datasets_dict(cfg, split=split) # 返回datasets.re10k.Re10KDataset类的实例
     logging.info("There are {:d} {} items\n".format(len(dataset), split)
     )
     shuffle = True if split == "train" else False

@@ -96,7 +96,7 @@ class Trainer(nn.Module):
             # reconstruction loss
             frame_ids = self.model.all_frame_ids(inputs)
             rec_loss = 0
-            for frame_id in frame_ids:
+            for frame_id in frame_ids: # [1, 2], 即拿两张目标图做损失（训练时）
                 # compute gaussian reconstruction loss
                 target = inputs[("color_aug", frame_id, 0)]
                 target = target[:,:,cfg.dataset.pad_border_aug:target.shape[2]-cfg.dataset.pad_border_aug,

@@ -156,9 +156,9 @@ class DataDownloader:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--mode", type=str)
-    parser.add_argument("-d", "--data_path", type=str)
-    parser.add_argument("-o", "--out_path", type=str)
+    parser.add_argument("-m", "--mode", type=str) # train or test
+    parser.add_argument("-d", "--data_path", type=str) # data/RealEstate10K
+    parser.add_argument("-o", "--out_path", type=str) # data/RealEstate10K
     tmpdir = os.environ.get('TMPDIR')
     parser.add_argument("-t", "--tmp_path", default=tmpdir, type=str)
 
@@ -172,7 +172,7 @@ def main():
         raise ValueError(f"Invalid split mode: {mode}")
 
     data_path = data_path / mode
-    out_path = out_path / mode
+    out_path = out_path / mode # data/RealEstate10K/train or data/RealEstate10K/test
     downloader = DataDownloader(
         data_path=data_path,
         out_path=out_path,

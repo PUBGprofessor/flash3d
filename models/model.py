@@ -52,8 +52,8 @@ class GaussianPredictor(nn.Module):
             w = W // (2 ** scale)
             if cfg.model.shift_rays_half_pixel == "zero":
                 shift_rays_half_pixel = 0
-            elif cfg.model.shift_rays_half_pixel == "forward":
-                shift_rays_half_pixel = 0.5
+            elif cfg.model.shift_rays_half_pixel == "forward": # 这里走这个分支
+                shift_rays_half_pixel = 0.5 # shift_rays_half_pixel: 是否进行半像素偏移（用于抗锯齿）
             elif cfg.model.shift_rays_half_pixel == "backward":
                 shift_rays_half_pixel = -0.5
             else:
@@ -62,7 +62,7 @@ class GaussianPredictor(nn.Module):
                 cfg.data_loader.batch_size * cfg.model.gaussians_per_pixel, 
                 # backprojection can be different if padding was used
                 h + 2 * self.cfg.dataset.pad_border_aug, 
-                w + 2 * self.cfg.dataset.pad_border_aug,
+                w + 2 * self.cfg.dataset.pad_border_aug, # 这里是外推吗？与深度图像的大小不同怎么办？
                 shift_rays_half_pixel=shift_rays_half_pixel
             )
         self.backproject_depth = nn.ModuleDict(backproject_depth)
@@ -93,9 +93,9 @@ class GaussianPredictor(nn.Module):
     def forward(self, inputs):
         cfg = self.cfg
         if "unidepth" in cfg.model.name:
-            outputs = self.models["unidepth_extended"](inputs)
+            outputs = self.models["unidepth_extended"](inputs) # 返回深度？
         
-        self.compute_gauss_means(inputs, outputs)
+        self.compute_gauss_means(inputs, outputs) # 计算真正的高斯中心，在增加outputs["gauss_means"]属性（xyz加偏移量）
 
         if cfg.model.gaussian_rendering:
             self.process_gt_poses(inputs, outputs)
@@ -123,11 +123,15 @@ class GaussianPredictor(nn.Module):
             zeros = torch.zeros(B, 1, H * W, device=depth.device)
             offset = torch.cat([offset, zeros], 1)
             xyz = xyz + offset # [B, 4, W*H]
-        inputs[("inv_K_src", scale)] = inv_K
+        inputs[("inv_K_src", scale)] = inv_K # 修改inputs["inv_K_src"]的值 干什么？
         outputs["gauss_means"] = xyz
 
     @torch.no_grad()
     def process_gt_poses(self, inputs, outputs):
+        """
+        计算相机间的变换矩阵，并对相机位姿进行尺度校正。
+        添加在outputs[("cam_T_cam", 0, f_i)]和outputs[("cam_T_cam", f_i, 0)]中。
+        """
         cfg = self.cfg
         keyframe = 0
         for f_i in self.target_frame_ids(inputs):
@@ -189,6 +193,7 @@ class GaussianPredictor(nn.Module):
     def render_images(self, inputs, outputs):
         """Generate the warped (reprojected) color images for a minibatch.
         Generated images are saved into the `outputs` dictionary.
+        利用高斯点云（Gaussian Splatting）对输入的相机视角进行投影，生成重投影后的彩色图像和深度图，并将结果存储在 outputs 字典中。
         """
         cfg = self.cfg
         B, _, H, W = inputs["color", 0, 0].shape

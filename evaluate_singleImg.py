@@ -40,24 +40,9 @@ def evaluate(model, cfg, evaluator, dataloader, device=None, save_vis=False):
                                     "psnr": [],
                                     "lpips": [],
                                     "name": target_name }
-        case "kitti":
-            if cfg.dataset.stereo:
-                eval_frames = ["s0"]
-                target_frame_ids = ["s0"]
-                all_frames = add_source_frame_id(eval_frames)
-            else:
-                eval_frames = [1, 2]
-                target_frame_ids = eval_frames
-                all_frames = add_source_frame_id(target_frame_ids)
-            for fid in all_frames:
-                score_dict[fid] = { "ssim": [],
-                                    "psnr": [],
-                                    "lpips": [],
-                                    "name": fid}
-
+                                    
     dataloader_iter = iter(dataloader)
     for k in tqdm([i for i in range(len(dataloader.dataset) // cfg.data_loader.batch_size)]):
-
         try:
             inputs = next(dataloader_iter)
         except Exception as e:

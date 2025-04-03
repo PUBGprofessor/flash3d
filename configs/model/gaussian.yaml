@@ -12,11 +12,11 @@ max_depth: 100
 
 # gaussian parameters
 gaussians_per_pixel: 2
-gaussian_rendering: true
+gaussian_rendering: true # 使用3DGS进行渲染
 randomise_bg_colour: true
 max_sh_degree: 1
 scaled_offset: false
-one_gauss_decoder: false
+one_gauss_decoder: false  # 如果True，则只创建一个 gauss_decoder_0，但预测所有高斯的参数；如果=False，创建多个个解码器，每个 gauss_decoder_i 负责自己所在层的预测，结果用for循环拼接。
 predict_offset: true
 bg_colour: [0.5, 0.5, 0.5]
 shift_rays_half_pixel: forward

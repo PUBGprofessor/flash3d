@@ -25,7 +25,7 @@ def get_splits_and_inits(cfg):
                         0.0]
 
         if cfg.model.max_sh_degree != 0:
-            sh_num = (cfg.model.max_sh_degree + 1) ** 2 - 1
+            sh_num = (cfg.model.max_sh_degree + 1) ** 2 - 1 # 表示 SH 参数的数量（去掉 l=0 的常数项）。
             sh_num_rgb = sh_num * 3
             split_dimensions.append(sh_num_rgb)
             scale_inits.append(cfg.model.sh_scale)

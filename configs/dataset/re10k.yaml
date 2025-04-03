@@ -3,7 +3,7 @@ split: original
 data_path: data/RealEstate10K 
 depth_path:
 unpack_pcl_tar: false
-preload_depths: false
+preload_depths: false # 是否有已保存的深度图？
 ransac_on_the_fly: false
 test_split_path: splits/re10k_mine_filtered/val_files.txt
 
@@ -12,17 +12,17 @@ width: 384
 
 znear: 0.01
 zfar: 100.0
-max_fov: 100.0
+max_fov: 100.0 # 最大视场角?
 
-from_tar: false
+from_tar: false # 是否从tar包中读取数据？
 copy_to_local: true
-color_aug: false
-skip_bad_shape: true
-dilation: random
+color_aug: false # 是否使用颜色增强？
+skip_bad_shape: true # 是否跳过坏的帧？
+dilation: random # 是否使用膨胀？
 max_dilation: 15
-pad_border_aug: 32
+pad_border_aug: 32 # 外推32像素吗？
 subset: -1  # use subset frames for small set overfitting
 
-frame_sampling_method: random
-scale_pose_by_depth: true
+frame_sampling_method: random # 采样方法
+scale_pose_by_depth: true # 是否根据深度的尺度矫正相机参数？
 test_split: mine

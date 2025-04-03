@@ -50,15 +50,15 @@ class Re10KDataset(data.Dataset):
             self.depth_path = Path(self.cfg.dataset.depth_path)
 
         self.split = split
-        self.image_size = (self.cfg.dataset.height, self.cfg.dataset.width)
-        self.color_aug = self.cfg.dataset.color_aug
+        self.image_size = (self.cfg.dataset.height, self.cfg.dataset.width) # 256 * 384
+        self.color_aug = self.cfg.dataset.color_aug #是否使用颜色增强？false
         if self.cfg.dataset.pad_border_aug != 0:
             self.pad_border_fn = T.Pad((self.cfg.dataset.pad_border_aug, self.cfg.dataset.pad_border_aug))
-        self.num_scales = len(cfg.model.scales)
-        self.novel_frames = list(cfg.model.gauss_novel_frames)
-        self.frame_count = len(self.novel_frames) + 1
+        self.num_scales = len(cfg.model.scales) # len([0]) = 1
+        self.novel_frames = list(cfg.model.gauss_novel_frames) # [1, 2]
+        self.frame_count = len(self.novel_frames) + 1 # 3
         self.max_fov = cfg.dataset.max_fov
-        self.interp = Image.LANCZOS
+        self.interp = Image.LANCZOS  #LANCZOS 插值（Lanczos resampling）是一种高阶 sinc 插值，通常比 BILINEAR 和 BICUBIC 更适合缩小图像时保持细节。
         self.loader = pil_loader
         self.to_tensor = T.ToTensor()
 
@@ -89,28 +89,28 @@ class Re10KDataset(data.Dataset):
             new_size = (self.image_size[0] // s, self.image_size[1] // s)
             self.resize[i] = T.Resize(new_size, interpolation=self.interp)
         # load dilation file
-        self.dilation = cfg.dataset.dilation
-        self.max_dilation = cfg.dataset.max_dilation
+        self.dilation = cfg.dataset.dilation # random
+        self.max_dilation = cfg.dataset.max_dilation  # 15
         if isinstance(self.dilation, int):
             self._left_offset = ((self.frame_count - 1) // 2) * self.dilation
             fixed_dilation = self.dilation
-        else: # enters here when cfg.dataset.dilation = random
+        else: # enters here when cfg.dataset.dilation = random 这里进入这个分支
             self._left_offset = 0
             fixed_dilation = 0
 
         # load image sequence
-        self._seq_data = self._load_seq_data(self.split_name_for_loading)
-        self._seq_keys = list(self._seq_data.keys())
+        self._seq_data = self._load_seq_data(self.split_name_for_loading) # 返回train.pickle.gz（训练集索引）
+        self._seq_keys = list(self._seq_data.keys())  # 训练集索引的key：每个场景txt的文件名
         
         if self.is_train:
             self._seq_key_src_idx_pairs = self._full_index(self._seq_keys, 
                 self._seq_data, 
                 self._left_offset,                    # 0 when sampling dilation randomly
                 (self.frame_count-1) * fixed_dilation # 0 when sampling dilation randomly
-            )
+            )  # 返回的是一个列表，其中每个元素是 (seq_key, frame_id)，用于后续数据加载。
             if cfg.dataset.subset != -1: # use cfg.dataset.subset source frames, they might come from the same sequence
                 self._seq_key_src_idx_pairs = self._seq_key_src_idx_pairs[:cfg.dataset.subset] * (len(self._seq_key_src_idx_pairs) // cfg.dataset.subset)
-        else:
+        else: # 这里还没看
             test_split_path = Path(__file__).resolve().parent / ".." / cfg.dataset.test_split_path 
             self._seq_key_src_idx_pairs = self._load_split_indices(test_split_path)
 
@@ -119,9 +119,9 @@ class Re10KDataset(data.Dataset):
             fn = self.data_path / "all.train.tar"
             self.images_dataset = TarDataset(archive=fn, extensions=(".jpg", ".pickle"))
             self.pcl_dataset = self.images_dataset
-        else:
+        else: # 这里进入这个分支
             fn = self.data_path / f"pcl.{self.split_name_for_loading}.tar"
-            if cfg.dataset.copy_to_local:
+            if cfg.dataset.copy_to_local: # ？
                 pcl_fn = copy_to_local_storage(fn)
                 self.pcl_dir = get_local_dir() 
                 extract_tar(pcl_fn, self.pcl_dir)
@@ -135,6 +135,15 @@ class Re10KDataset(data.Dataset):
         return load_seq_data(self.data_path, split)
  
     def _full_index(self, seq_keys, seq_data, left_offset, extra_frames):
+        """
+        功能：生成有效数据索引 (seq_key, frame_id) 列表。
+        跳过无效帧：如果 skip_bad=True，会过滤掉无效帧。
+        返回的是一个列表，其中每个元素是 (seq_key, frame_id)，用于后续数据加载。
+        如[
+            ("video_1", 1), ("video_1", 2), ("video_1", 3),
+            ("video_2", 1), ("video_2", 2), ("video_2", 3), ("video_2", 4), ("video_2", 5)
+        ]
+        """
         skip_bad = self.cfg.dataset.skip_bad_shape
         if skip_bad:
             fn = self.data_path / "valid_seq_ids.train.pickle.gz"
@@ -142,7 +151,7 @@ class Re10KDataset(data.Dataset):
         key_id_pairs = []
         for seq_key in seq_keys:
             seq_len = len(seq_data[seq_key]["timestamps"])
-            frame_ids = [i + left_offset for i in range(seq_len - extra_frames)]
+            frame_ids = [i + left_offset for i in range(seq_len - extra_frames)]  # 0 ~ seq_len
             if skip_bad:
                 good_frames = valid_seq_ids[seq_key]
                 frame_ids = [f_id for f_id in frame_ids if f_id in good_frames]
@@ -261,10 +270,10 @@ class Re10KDataset(data.Dataset):
         if self.is_train:
             # train data contains pairs of sequence name, source frame index
             seq_key, src_idx = self._seq_key_src_idx_pairs[index]
-            pose_data = self._seq_data[seq_key]
-            seq_len = len(pose_data["timestamps"])
+            pose_data = self._seq_data[seq_key]  # 这个数据集的包含的参数{'timestamps'：[1 时间戳], 'intrinsics':[6 内参], 'poses':[3 * 4 外参]}
+            seq_len = len(pose_data["timestamps"])  # 这个数据集的包含的帧数
 
-            if self.cfg.dataset.frame_sampling_method == "two_forward_one_back":
+            if self.cfg.dataset.frame_sampling_method == "two_forward_one_back": # 不是这个分支
                 if self.dilation == "random":
                     dilation = torch.randint(1, self.max_dilation, (1,)).item()
                     left_offset = dilation # one frame in the past
@@ -277,12 +286,13 @@ class Re10KDataset(data.Dataset):
                 src_and_tgt_frame_idxs = [src_idx - left_offset + i * dilation for i in range(self.frame_count)]
                 # reorder and make sure indices don't go beyond start or end of the sequence
                 src_and_tgt_frame_idxs = [src_idx] + [max(min(i, seq_len-1), 0) for i in src_and_tgt_frame_idxs if i != src_idx]
-            elif self.cfg.dataset.frame_sampling_method == "random":
+            elif self.cfg.dataset.frame_sampling_method == "random":  # 这里进入这个分支
                 # random indices between -30 and 30 which will mean the offset 
                 target_frame_idxs = torch.randperm( 4 * self.max_dilation + 1 )[:self.frame_count] - 2 * self.max_dilation
                 # check that 0 is not included and that the indides dont go beyond the end of the sequence
+                # 最终得到源帧 src_idx 和 self.frame_count - 1 个目标帧。
                 src_and_tgt_frame_idxs = [src_idx] + [max(min(i + src_idx, seq_len-1), 0) for i in target_frame_idxs.tolist() if i != 0][:self.frame_count - 1]                
-            frame_names = [0] + self.novel_frames
+            frame_names = [0] + self.novel_frames # [0, 1, 2]
 
         # load src, 5 frames into future, 10 frames into future and random
         # follows MINE split and evaluation protocol
@@ -294,10 +304,10 @@ class Re10KDataset(data.Dataset):
             frame_names = [0, 1, 2, 3]
 
         if self.cfg.dataset.scale_pose_by_depth:
-            sparse_pcl = self._load_sparse_pcl(seq_key)
+            sparse_pcl = self._load_sparse_pcl(seq_key) # 加载稀疏点云数据
 
         # load the data
-        do_color_aug = self.is_train and random.random() > 0.5 and self.color_aug
+        do_color_aug = self.is_train and random.random() > 0.5 and self.color_aug # 是否使用颜色增强？false
         if do_color_aug:
             color_aug = T.ColorJitter(
                     self.brightness, self.contrast, self.saturation, self.hue)

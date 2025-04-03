@@ -1,5 +1,5 @@
 #!/bin/sh
-
+# 分别下载https://thor.robots.ox.ac.uk/flash3d/test.pickle.gz等到data/RealEstate10K目录下
 DATA_PATH=data/RealEstate10K
 file_list=(
     test.pickle.gz

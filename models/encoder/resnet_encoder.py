@@ -10,7 +10,12 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-
+"""
+models.resnet18 / models.resnet50
+这是 torchvision 提供的标准 ResNet 模型（没有加载权重）。
+models.ResNet18_Weights.IMAGENET1K_V1 / models.ResNet50_Weights.IMAGENET1K_V2
+这是 ImageNet 预训练权重，用于初始化模型。
+"""
 RESNETS = {18: (models.resnet18, models.ResNet18_Weights.IMAGENET1K_V1),
            50: (models.resnet50, models.ResNet50_Weights.IMAGENET1K_V2)}
 
@@ -67,7 +72,7 @@ class ResnetEncoder(nn.Module):
     def __init__(self, num_layers, pretrained, bn_order, num_input_images=1):
         super(ResnetEncoder, self).__init__()
 
-        self.num_ch_enc = np.array([64, 64, 128, 256, 512])
+        self.num_ch_enc = np.array([64, 64, 128, 256, 512]) # 输出的featuresk列表每层的通道数
         self.bn_order = bn_order
 
         if num_layers not in RESNETS:
@@ -77,14 +82,15 @@ class ResnetEncoder(nn.Module):
             self.encoder = resnet_multiimage_input(num_layers, pretrained, num_input_images)
         else:
             model, weights = RESNETS[num_layers]
-            self.encoder = model(weights=weights)
+            self.encoder = model(weights=weights) # torchvision.models.resnet50(weights=weights)即torch自带预训练的模型
 
         if num_layers > 34:
-            self.num_ch_enc[1:] *= 4
+            self.num_ch_enc[1:] *= 4  # 因此50层的输出通道数是18层的4倍，即256, 256, 512, 1024, 2048
 
     def forward(self, input_image):
         encoder = self.encoder
         features = []
+        # 输入 input_image 经过 标准化（均值 0.45，标准差 0.225）：
         x = (input_image - 0.45) / 0.225
         x = encoder.conv1(x)
 

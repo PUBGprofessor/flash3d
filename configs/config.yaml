@@ -36,6 +36,6 @@ run:
   random_seed: 42
   git_hash: null
   log_frequency: 250
-  save_frequency: 5000
+  save_frequency: 5000 # 每多少代保存一次模型
   val_frequency: 5000
   num_keep_ckpts: 5

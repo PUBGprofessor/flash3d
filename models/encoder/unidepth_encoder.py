@@ -16,9 +16,19 @@ class UniDepthExtended(nn.Module):
         # 这里使用了lpiccinelli-eth/UniDepth的预训练模型
         # 调用方法为self.unidepth.infer(inputs["color_aug", 0, 0], intrinsics=inputs[("K_src", 0)])
         self.unidepth = torch.hub.load(
-            "lpiccinelli-eth/UniDepth", "UniDepth", version=cfg.model.depth.version, 
+            "lpiccinelli-eth/UniDepth", "UniDepth", version=cfg.model.depth.version,  # v1
             backbone=cfg.model.depth.backbone, pretrained=True, trust_repo=True, 
             force_reload=True
+        )
+
+        # 法向预测模型
+        # 这里使用了Stable-X/StableNormal的预训练模型
+        # 调用方法为self.StableNormal(img)
+        self.StableNormal = torch.hub.load(
+            "Stable-X/StableNormal", 
+            "StableNormal_turbo", 
+            trust_repo=True, 
+            yoso_version='yoso-normal-v0-3'
         )
 
         self.parameters_to_train = []
@@ -29,16 +39,19 @@ class UniDepthExtended(nn.Module):
                 pretrained=cfg.model.backbone.weights_init == "pretrained",
                 bn_order=cfg.model.backbone.resnet_bn_order,
             )
-            # change encoder to take depth as conditioning
-            # 因为输出的通道数是4，所以需要将输入的通道数改为4
+            original_input_channels = 3
             if cfg.model.backbone.depth_cond:
-                self.encoder.encoder.conv1 = nn.Conv2d(
-                    4,
-                    self.encoder.encoder.conv1.out_channels,
-                    kernel_size = self.encoder.encoder.conv1.kernel_size,
-                    padding = self.encoder.encoder.conv1.padding,
-                    stride = self.encoder.encoder.conv1.stride
-                )
+                original_input_channels += 1
+            if "2DGS_all_oriented_withnormal" in self.cfg.model.model_extend:
+                original_input_channels += 3
+            # change encoder to take depth as conditioning
+            self.encoder.encoder.conv1 = nn.Conv2d(
+                original_input_channels,
+                self.encoder.encoder.conv1.out_channels,
+                kernel_size = self.encoder.encoder.conv1.kernel_size,
+                padding = self.encoder.encoder.conv1.padding,
+                stride = self.encoder.encoder.conv1.stride
+            )
             self.parameters_to_train += [{"params": self.encoder.parameters()}]
             models = {}
             if cfg.model.gaussians_per_pixel > 1:
@@ -49,7 +62,7 @@ class UniDepthExtended(nn.Module):
                 # 预测其他高斯参数
                 models["gauss_decoder_"+str(i)] = ResnetDecoder(cfg=cfg,num_ch_enc=self.encoder.num_ch_enc)
                 self.parameters_to_train += [{"params": models["gauss_decoder_"+str(i)].parameters()}]
-                if cfg.model.one_gauss_decoder:
+                if cfg.model.one_gauss_decoder: # false
                     break
 
             # 此时self.models里面有。。。
@@ -71,9 +84,21 @@ class UniDepthExtended(nn.Module):
                 intrinsics = inputs[("K_src", 0)] if ("K_src", 0) in inputs.keys() else None # 内参矩阵
                 depth_outs = self.unidepth.infer(inputs["color_aug", 0, 0], intrinsics=intrinsics)
 
+        if "2DGS_all_oriented_withnormal" in self.cfg.model.model_extend:
+            # 如果已有的法向图，则直接使用，没有则使用StableNormal预测
+            if ('normal', 0, 0) in inputs.keys() and inputs[('normal', 0, 0)] is not None:
+                depth_outs = dict()
+                depth_outs["normal"] = inputs[('normal', 0, 0)]
+            else:
+                with torch.no_grad():
+                    depth_outs["normal"] = self.StableNormal(inputs["color_aug", 0, 0])
+
         # 这里的depth_outs["depth"]是第一层高斯的深度，形状为(B, 1, H, W)
 
         outputs_gauss = {}
+
+        if "2DGS_all_oriented_withnormal" in self.cfg.model.model_extend:
+            outputs_gauss[("normal", 0)] = depth_outs["normal"] # 法向图
 
         outputs_gauss[("K_src", 0)] = inputs[("K_src", 0)] if ("K_src", 0) in inputs.keys() else depth_outs["intrinsics"]
         outputs_gauss[("inv_K_src", 0)] = torch.linalg.inv(outputs_gauss[("K_src", 0)])  # 逆内参矩阵
@@ -83,6 +108,9 @@ class UniDepthExtended(nn.Module):
             input = torch.cat([inputs["color_aug", 0, 0], depth_outs["depth"] / 20.0], dim=1) # 拼接深度图和RGB图（共4 * H * W）
         else:
             input = inputs["color_aug", 0, 0]
+
+        if "2DGS_all_oriented_withnormal" in self.cfg.model.model_extend:
+            input = torch.cat([input, (depth_outs["normal"] + 1) * 100], dim=1) # 拼接法向图和RGB图（共7 * H * W）
 
         # encode the input image
         encoded_features = self.encoder(input)
@@ -106,7 +134,7 @@ class UniDepthExtended(nn.Module):
         # predict multiple gaussian parameters
         gauss_outs = dict()
         for i in range(self.cfg.model.gaussians_per_pixel):
-            outs = self.models["gauss_decoder_"+str(i)](encoded_features) # 仅输入由图像和初始深度图拼接而成的特征，够吗？感觉可以加上预测出来的本层的深度图
+            outs = self.models["gauss_decoder_"+str(i)](encoded_features)
             if self.cfg.model.one_gauss_decoder:
                 gauss_outs |= outs
                 break

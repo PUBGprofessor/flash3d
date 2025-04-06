@@ -83,7 +83,7 @@ class Trainer(nn.Module):
                 total_loss += big_g_lmbd * big_gauss_reg_loss
             
             # regularize too big offset
-            if cfg.model.predict_offset and (offs_lmbd := cfg.loss.gauss_offset.weight) > 0:
+            if cfg.model.predict_offset and (offs_lmbd := cfg.loss.gauss_offset.weight) > 0: # 这里到底走不走啊？
                 offset = outputs["gauss_offset"]
                 big_offset = torch.where(offset**2 > cfg.loss.gauss_offset.thresh**2)
                 if len(big_offset[0]) > 0:
@@ -99,6 +99,7 @@ class Trainer(nn.Module):
             for frame_id in frame_ids: # [1, 2], 即拿两张目标图做损失（训练时）
                 # compute gaussian reconstruction loss
                 target = inputs[("color_aug", frame_id, 0)]
+                # 不计算外推区域的损失？
                 target = target[:,:,cfg.dataset.pad_border_aug:target.shape[2]-cfg.dataset.pad_border_aug,
                                 cfg.dataset.pad_border_aug:target.shape[3]-cfg.dataset.pad_border_aug,]
                 pred = outputs[("color_gauss", frame_id, 0)]

@@ -2,6 +2,7 @@ import torch
 import logging
 import time
 import torch.nn as nn
+import torch.nn.functional as F
 
 from pathlib import Path
 from einops import rearrange
@@ -98,11 +99,69 @@ class GaussianPredictor(nn.Module):
         self.compute_gauss_means(inputs, outputs) # 计算真正的高斯中心，在增加outputs["gauss_means"]属性（xyz加偏移量）
 
         if cfg.model.gaussian_rendering:
+            if "2DGS_all_oriented_withnormal" in self.cfg.model.model_extend:
+                self.control_normal(outputs, cfg.model.gaussians_per_pixel) # 计算高斯的方向
             self.process_gt_poses(inputs, outputs)
             self.render_images(inputs, outputs)
 
         return outputs
     
+    def compute_quaternion_from_normals(self, normals):
+        """
+        normals: (B, 3, H, W)
+        return: (B, 4, H, W)
+        """
+        v1 = torch.tensor([0.0, 0.0, -1.0], device=normals.device).view(1, 3, 1, 1)  # reference vector
+        v2 = F.normalize(normals, dim=1)  # ensure unit normal
+
+        # 点积（用于计算角度）
+        dot = (v1 * v2).sum(dim=1, keepdim=True).clamp(-1.0, 1.0)  # (B, 1, H, W)
+        theta = torch.acos(dot)  # (B, 1, H, W)
+        half_theta = theta / 2
+
+        # 特殊处理：反方向情况
+        mask_opposite = (dot < -0.999).float()
+        fallback_quat = torch.tensor([0.0, 1.0, 0.0, 0.0], device=normals.device).view(1, 4, 1, 1)
+
+        # 轴（v1 × v2）
+        axis = torch.cross(v1.expand_as(v2), v2, dim=1)
+        axis = F.normalize(axis + 1e-8, dim=1)  # 避免除以 0
+
+        # 构建四元数
+        w = torch.cos(half_theta)
+        xyz = axis * torch.sin(half_theta)
+        quat = torch.cat([w, xyz], dim=1)  # (B, 4, H, W)
+
+        # 如果是反方向，使用 fallback 四元数
+        quat = quat * (1 - mask_opposite) + fallback_quat * mask_opposite
+
+        return F.normalize(quat, dim=1)
+
+    def control_normal(self, outputs, gaussians_per_pixel=2):
+        """
+        将 normal 向量指定方向，转换为四元数，并更新 gauss_rotation 中每个 batch 第一个高斯的旋转。
+        """
+        normals = outputs[("normal", 0)]  # (B, 3, H, W)
+        B, _, H, W = normals.shape
+        new_quats = self.compute_quaternion_from_normals(normals)  # (B, 4, H, W)
+
+        rot = outputs["gauss_rotation"]  # (B * gaussians_per_pixel, 4, H, W)
+
+        # 构建 mask：选中第一个高斯
+        mask = torch.zeros_like(rot[:, :1])  # (B * G, 1, H, W)
+        for b in range(B):
+            mask[b * gaussians_per_pixel] = 1.0  # 仅第一个高斯为1
+
+        # 扩展 new_quats 到和 rot 相同 shape，用于 mask 替换
+        expanded_quat = torch.zeros_like(rot)
+        for b in range(B):
+            expanded_quat[b * gaussians_per_pixel] = new_quats[b]
+
+        # mask 替换：mask==1 的位置取 expanded_quat，其余保持原值
+        updated_rot = rot * (1.0 - mask) + expanded_quat * mask
+
+        outputs["gauss_rotation"] = updated_rot
+   
     def compute_gauss_means(self, inputs, outputs):
         cfg = self.cfg
         scale = self.cfg.model.scales[0]
@@ -117,7 +176,7 @@ class GaussianPredictor(nn.Module):
         xyz = self.backproject_depth[str(scale)](depth, inv_K)
         if cfg.model.predict_offset:
             offset = outputs["gauss_offset"]
-            if cfg.model.scaled_offset:
+            if cfg.model.scaled_offset: # false
                 offset = offset * depth.detach()
             offset = offset.view(B, 3, -1)
             zeros = torch.zeros(B, 1, H * W, device=depth.device)

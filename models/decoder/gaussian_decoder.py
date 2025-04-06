@@ -92,6 +92,12 @@ class GaussianDecoder(nn.Module):
         rotation = torch.cat(rotation_list, dim=1)
         feat_dc = torch.cat(feat_dc_list, dim=1)
 
+        if "2DGS_one_oriented" in self.cfg.model.model_extend: # 控制为单朝向
+            mask = torch.ones_like(rotation)
+            mask[:, [1, 2], :, :] = 0
+            rotation = rotation * mask
+
+
         out = {
             "gauss_opacity": self.opacity_activation(opacity),
             "gauss_scaling": self.scaling_activation(scaling) * self.scaling_lambda,

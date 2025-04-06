@@ -2,6 +2,7 @@ defaults:
   - depth: unidepth
   - backbone: resnet
 
+model_extend: 2DGS_all_oriented # 2DGS_one_oriented, 2DGS_all_oriented_withnormal
 name: unidepth
 frame_ids: [0, -1, 1]
 scales: [0]

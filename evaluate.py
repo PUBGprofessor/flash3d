@@ -71,7 +71,7 @@ def evaluate(model, cfg, evaluator, dataloader, device=None, save_vis=False):
             raise e
 
         if save_vis:
-            out_dir = Path("/work/cxzheng/3D/splatvideo/eldar/visual_results/images")
+            out_dir = Path("/home/user/mydisk/3DGS_code/flash3d/output")
             out_dir.mkdir(exist_ok=True)
             print(f"saving images to: {out_dir.resolve()}")
             seq_name = inputs[("frame_id", 0)][0].split("+")[1]

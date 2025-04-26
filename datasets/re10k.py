@@ -217,7 +217,7 @@ class Re10KDataset(data.Dataset):
         with open(index_path, "r") as f:
             lines = f.readlines()
         key_id_pairs = list(map(get_key_id, lines))
-        return key_id_pairs
+        return key_id_pairs # list of tuples (key, [src_idx, tgt_5_idx, tgt_10_idx, tgt_random_idx])
 
     def get_frame_data(self, seq_key, frame_idx, pose_data, color_aug_fn):
         # load the image

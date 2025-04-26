@@ -8,7 +8,7 @@ python evaluate.py \
     +dataset.crop_border=true \
     dataset.test_split_path=splits/re10k_mine_filtered/test_files.txt \
     model.depth.version=v1 \
-    ++eval.save_vis=false
+    ++eval.save_vis=true # false
 
 # python evaluate_singleImg.py \
 #     hydra.run.dir="exp/re10k_v2" \

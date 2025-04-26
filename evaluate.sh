@@ -10,3 +10,11 @@ python evaluate.py \
     model.depth.version=v1 \
     ++eval.save_vis=false
 
+# python evaluate_singleImg.py \
+#     hydra.run.dir="exp/re10k_v2" \
+#     hydra.job.chdir=true \
+#     +experiment=layered_re10k \
+#     +dataset.crop_border=true \
+#     dataset.test_split_path=splits/re10k_mine_filtered/test_files.txt \
+#     model.depth.version=v1 \
+#     ++eval.save_vis=false

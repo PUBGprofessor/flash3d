@@ -63,11 +63,11 @@ def run_epoch(fabric,
             if early_phase or late_phase:
                 trainer.log("train", inputs, outputs)
             # save the model
-            if step % cfg.run.save_frequency == 0 and step != 0:
+            if step % cfg.run.save_frequency == 0 and step != 0: # save_frequency:5000
                 trainer.model.save_model(optimiser, step, ema)
             # save the validation results
             early_phase = (step < 6000) and (step % 500 == 0)
-            if (early_phase or step % cfg.run.val_frequency == 0): # and step != 0:
+            if (early_phase or step % cfg.run.val_frequency == 0): # and step != 0: # val_frequency:5000
                 model_eval = ema if ema is not None else trainer.model
                 trainer.validate(model_eval, evaluator, val_loader, device=fabric.device)
 

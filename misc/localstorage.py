@@ -33,10 +33,13 @@ def copy_to_local_storage(filename, rank=None):
     return new_filename
 
 def extract_tar(fn, unzip_dir):
+    if unzip_dir.exists():
+        logging.info(f"Have Unpacked {fn} to {unzip_dir} ...")
+        return
     unzip_dir.mkdir(exist_ok=True, parents=True)
     logging.info(f"Unpacking {fn} to {unzip_dir} ...")
     tf = tarfile.open(fn)
     tf.extractall(unzip_dir, filter='fully_trusted')
     logging.info(f"Finished unpacking.")
-    fn.unlink()
-    logging.info(f"Deleted {str(fn)}.")
+    # fn.unlink() # remove the tar file
+    # logging.info(f"Deleted {str(fn)}.")

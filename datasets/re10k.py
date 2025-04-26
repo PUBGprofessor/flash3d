@@ -121,9 +121,11 @@ class Re10KDataset(data.Dataset):
             self.pcl_dataset = self.images_dataset
         else: # 这里进入这个分支
             fn = self.data_path / f"pcl.{self.split_name_for_loading}.tar"
-            if cfg.dataset.copy_to_local: # ？
-                pcl_fn = copy_to_local_storage(fn)
-                self.pcl_dir = get_local_dir() 
+            if cfg.dataset.copy_to_local: # ？修改为不复制，但解压缩
+                # pcl_fn = copy_to_local_storage(fn)
+                pcl_fn = fn
+                # self.pcl_dir = get_local_dir() 
+                self.pcl_dir = self.data_path / f"pcl.{self.split_name_for_loading}"
                 extract_tar(pcl_fn, self.pcl_dir)
             else:
                 self.pcl_dataset = TarDataset(archive=fn, extensions=(".jpg", ".pickle"))
@@ -165,8 +167,9 @@ class Re10KDataset(data.Dataset):
             f = self.pcl_dataset.get_file(fn)
             data = gzip.decompress(f.read())
             return pickle.loads(data)
-        else:
+        else: # 走这个分支
             fn = self.pcl_dir / fn
+            # fn = Path("/home/user/mydisk/3DGS_code/flash3d/data/RealEstate10K/pcl.train.tar")
             with gzip.open(fn, "rb") as f:
                 data = pickle.load(f)
             return data 

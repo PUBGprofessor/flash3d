@@ -14,8 +14,8 @@ znear: 0.01
 zfar: 100.0
 max_fov: 100.0 # 最大视场角?
 
-from_tar: false # 是否从tar包中读取数据？
-copy_to_local: true
+from_tar: false # 是否从tar包中读取数据？false
+copy_to_local: true # true
 color_aug: false # 是否使用颜色增强？
 skip_bad_shape: true # 是否跳过坏的帧？
 dilation: random # 是否使用膨胀？

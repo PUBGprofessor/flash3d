@@ -21,6 +21,14 @@ def main():
         if not data_path.joinpath(split, seq).is_dir():
             print(f"missing sequence {seq}")
             del seq_data[seq]
+        else:
+            path = data_path.joinpath(split, seq)
+            for i in range(len(seq_data[seq]['timestamps'])):
+                if not path.joinpath(f"{seq_data[seq]['timestamps'][i]}.jpg").exists():
+                    print(f"missing image {path.joinpath(f'{i:06d}.jpg')}")
+                    del seq_data[seq]
+                    break
+    # del seq_data["829c847536f4ed7c"]
 
     file_path = data_path / f"{split}.pickle.gz" # 索引文件
     with gzip.open(file_path, "wb") as f:

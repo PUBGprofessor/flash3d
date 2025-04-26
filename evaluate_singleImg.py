@@ -6,7 +6,7 @@ import numpy as np
 import torchvision.transforms as T
 
 # from tqdm import tqdm
-# from pathlib import Path
+from pathlib import Path
 from omegaconf import DictConfig
 from hydra.core.hydra_config import HydraConfig
 # from matplotlib import pyplot as plt
@@ -40,13 +40,18 @@ def get_intrinsic_matrix(width, height, fx=None, fy=None, cx=None, cy=None):
 
 def make_inputs(cfg, image_path):
     pad_border_fn = T.Pad((cfg.dataset.pad_border_aug, cfg.dataset.pad_border_aug))
+    to_tensor = T.ToTensor()
+
     raw_image = Image.open(image_path).convert("RGB")
     color = pad_border_fn(raw_image)
     color_aug = pad_border_fn(raw_image)
+
+    color = to_tensor(color).unsqueeze(0)
+    color_aug = to_tensor(color_aug).unsqueeze(0)
+
     (width, height) = raw_image.size
-
-
     K = get_intrinsic_matrix(width, height)
+
     input_dict = {
         ("frame_id", 0): 0,
         ("K_tgt", 0): K,
@@ -60,8 +65,8 @@ def make_inputs(cfg, image_path):
 def evaluate(model, cfg, evaluator=None, dataloader=None, device=None, save_vis=False):
     model_model = get_model_instance(model)
     model_model.set_eval()
-    out_out_dir = "./output"
-    image_path = r"40874000.jpg"
+    out_out_dir = Path("./output")
+    image_path = r"testData/110133333.jpg"
     score_dict = {}
     # match cfg.dataset.name:
     #     case "re10k" | "nyuv2":
@@ -101,7 +106,7 @@ def evaluate(model, cfg, evaluator=None, dataloader=None, device=None, save_vis=
             # out_gt_dir = out_out_dir / f"gt"
             # out_gt_dir.mkdir(exist_ok=True)
             out_dir_ply = out_out_dir / "ply"
-            out_dir_ply.mkdir(exist_ok=True)
+            out_dir_ply.mkdir(exist_ok=True, parents=True)
 
         inputs = make_inputs(cfg, image_path)
         with torch.no_grad():

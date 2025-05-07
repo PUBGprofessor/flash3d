@@ -314,6 +314,7 @@ class GaussianPredictor(nn.Module):
         weights_path = Path(weights_path)
 
         if weights_path.is_dir():
+            # ckpts = sorted(list(weights_path.glob("model_*.pth")), reverse=False)
             ckpts = sorted(list(weights_path.glob("model_*.pth")), reverse=True)
             weights_path = ckpts[ckpt_ids]
         logging.info(f"Loading weights from {weights_path}...")

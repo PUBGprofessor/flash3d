@@ -25,7 +25,7 @@ def get_model_instance(model):
     return model.ema_model if type(model).__name__ == "EMA" else model
 
 def evaluate(model, cfg, evaluator, dataloader, device=None, save_vis=False):
-    model_model = get_model_instance(model)
+    model_model = get_model_instance(model) # GuassianPredictor
     model_model.set_eval()
 
     score_dict = {}
@@ -56,7 +56,7 @@ def evaluate(model, cfg, evaluator, dataloader, device=None, save_vis=False):
                                     "name": fid}
 
     dataloader_iter = iter(dataloader)
-    for k in tqdm([i for i in range(len(dataloader.dataset) // cfg.data_loader.batch_size)]):
+    for k in tqdm([i for i in range(len(dataloader.dataset) // cfg.data_loader.batch_size)]): # 5
 
         try:
             inputs = next(dataloader_iter)
@@ -90,7 +90,7 @@ def evaluate(model, cfg, evaluator, dataloader, device=None, save_vis=False):
             inputs["target_frame_ids"] = target_frame_ids
             outputs = model(inputs)
 
-        for f_id in score_dict.keys():
+        for f_id in score_dict.keys(): # ["src", "tgt5", "tgt10", "tgt_rand"]
             pred = outputs[('color_gauss', f_id, 0)]
             if cfg.dataset.name == "dtu":
                 gt = inputs[('color_orig_res', f_id, 0)]
@@ -100,6 +100,10 @@ def evaluate(model, cfg, evaluator, dataloader, device=None, save_vis=False):
             # should work in for B>1, however be careful of reduction
             out = evaluator(pred, gt)
             if save_vis:
+                # 2dgs去除scale最后一列
+                # print(outputs["gauss_scaling"][0, :, 111:113, 111:113])
+                # print(outputs["gauss_scaling"].shape)  # torch.Size([2, 3, 320, 448]) 
+                # outputs["gauss_scaling"] = outputs["gauss_scaling"][:, :2]
                 save_ply(outputs, out_dir_ply / f"{f_id}.ply", gaussians_per_pixel=model.cfg.model.gaussians_per_pixel)
                 pred = pred[0].clip(0.0, 1.0).permute(1, 2, 0).detach().cpu().numpy()
                 gt = gt[0].clip(0.0, 1.0).permute(1, 2, 0).detach().cpu().numpy()

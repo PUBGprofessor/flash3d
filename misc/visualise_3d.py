@@ -84,8 +84,10 @@ def construct_list_of_attributes(num_rest: int) -> list[str]:
     for i in range(num_rest):
         attributes.append(f"f_rest_{i}")
     attributes.append("opacity")
-    for i in range(3):
+    for i in range(3):  # 3DGS
         attributes.append(f"scale_{i}")
+    # for i in range(2):  # 2DGS
+    #     attributes.append(f"scale_{i}")
     for i in range(4):
         attributes.append(f"rot_{i}")
     return attributes

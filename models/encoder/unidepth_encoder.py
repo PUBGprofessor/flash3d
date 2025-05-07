@@ -6,6 +6,10 @@ from einops import rearrange
 from models.encoder.resnet_encoder import ResnetEncoder
 from models.decoder.resnet_decoder import ResnetDecoder, ResnetDepthDecoder
 
+from torchvision.transforms import ToTensor
+from torchvision.transforms.functional import to_pil_image
+to_tensor = ToTensor()
+
 class UniDepthExtended(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -18,7 +22,14 @@ class UniDepthExtended(nn.Module):
         self.unidepth = torch.hub.load(
             "lpiccinelli-eth/UniDepth", "UniDepth", version=cfg.model.depth.version, 
             backbone=cfg.model.depth.backbone, pretrained=True, trust_repo=True, 
-            # force_reload=True
+            force_reload=True
+        )
+
+        self.StableNormal = torch.hub.load(
+            "Stable-X/StableNormal", 
+            "StableNormal_turbo", 
+            trust_repo=True, 
+            yoso_version='yoso-normal-v0-3'
         )
 
         self.parameters_to_train = []
@@ -33,7 +44,8 @@ class UniDepthExtended(nn.Module):
             # 因为输出的通道数是4，所以需要将输入的通道数改为4
             if cfg.model.backbone.depth_cond:
                 self.encoder.encoder.conv1 = nn.Conv2d(
-                    4,
+                    # 4,
+                    7,
                     self.encoder.encoder.conv1.out_channels,
                     kernel_size = self.encoder.encoder.conv1.kernel_size,
                     padding = self.encoder.encoder.conv1.padding,
@@ -73,6 +85,21 @@ class UniDepthExtended(nn.Module):
 
         # 这里的depth_outs["depth"]是第一层高斯的深度，形状为(B, 1, H, W)
 
+        # 如果已有的法向图，则直接使用，没有则使用StableNormal预测
+        if ('normal', 0, 0) in inputs.keys() and inputs[('normal', 0, 0)] is not None:
+            depth_outs = dict()
+            depth_outs["normal"] = inputs[('normal', 0, 0)]
+        else:
+            with torch.no_grad():
+                depth_outs["normal"] = []
+                for i in range(inputs["color_aug", 0, 0].shape[0]):
+                    img_tensor = inputs["color_aug", 0, 0][i]  # [C, H, W]
+                    img_pil = to_pil_image(img_tensor)
+                    normal_pil = self.StableNormal(img_pil)  # 结果是 PIL.Image
+                    normal_tensor = to_tensor(normal_pil)  # 转为 Tensor，shape: [3, H, W]
+                    depth_outs["normal"].append(normal_tensor)
+                depth_outs["normal"] = torch.stack(depth_outs["normal"]).to("cuda")  # [B, 3, H, W]
+
         outputs_gauss = {}
 
         outputs_gauss[("K_src", 0)] = inputs[("K_src", 0)] if ("K_src", 0) in inputs.keys() else depth_outs["intrinsics"]
@@ -84,6 +111,8 @@ class UniDepthExtended(nn.Module):
         else:
             input = inputs["color_aug", 0, 0]
 
+        input = torch.cat([input, depth_outs["normal"]], dim=1) # 拼接法向图和RGB图（共7 * H * W）
+        # input = torch.cat([input, (depth_outs["normal"] + 1) * 100], dim=1) # 拼接法向图和RGB图（共7 * H * W）
         # encode the input image
         encoded_features = self.encoder(input)
 

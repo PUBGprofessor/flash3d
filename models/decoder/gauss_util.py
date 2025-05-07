@@ -12,7 +12,8 @@
 import torch
 import numpy as np
 import math
-from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
+from diff_surfel_rasterization import GaussianRasterizationSettings, GaussianRasterizer # 改为2DGS
+# from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer # 原3DGS
 
 
 def getProjectionMatrix(znear, zfar, fovX, fovY, pX=0.0, pY=0.0):
@@ -123,7 +124,8 @@ def render_predicted(cfg,
     rotations = None
     cov3D_precomp = None
 
-    scales = pc["scaling"] # .contiguous()
+    # scales = pc["scaling"] # .contiguous()   # 原3DGS
+    scales = pc["scaling"][:, :2] # .contiguous()  # 现2DGS只用2个scale方向
     rotations = pc["rotation"] # .contiguous()
 
     # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
@@ -158,7 +160,8 @@ def render_predicted(cfg,
         "visibility_filter" : radii > 0,
         "radii": radii
     }
-    # 这里下面为 多出3DGS的部分，不知道实际有没有执行，看GaussianRasterizer源码的话确实没有返回rendered_image, radii之外的变量，因此不执行
+    # 这里下面为 多出3DGS的部分，不知道实际有没有执行，看GaussianRasterizer源码的话确实没有返回rendered_image, radii之外的变量，因此不执行 x
+    # 看错源码了，返回值是color, radii, depth, opacity, n_touched，因此执行
     if len(outputs) >= 4:
         rendered_depth, rendered_alpha = outputs[2:4]
         output["depth"] = rendered_depth

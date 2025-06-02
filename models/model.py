@@ -10,6 +10,7 @@ from models.encoder.layers import BackprojectDepth
 from models.decoder.gauss_util import focal2fov, getProjectionMatrix, K_to_NDC_pp, render_predicted
 from misc.util import add_source_frame_id
 from misc.depth import estimate_depth_scale, estimate_depth_scale_ransac
+from misc.normal import rotation_quaternion_from_negx_to_b
 
 def default_param_group(model):
     return [{'params': model.parameters()}]
@@ -97,12 +98,26 @@ class GaussianPredictor(nn.Module):
         
         self.compute_gauss_means(inputs, outputs) # 计算真正的高斯中心，在增加outputs["gauss_means"]属性（xyz加偏移量）
 
+        self.compute_normal(inputs, outputs)
+
         if cfg.model.gaussian_rendering:
             self.process_gt_poses(inputs, outputs)
             self.render_images(inputs, outputs)
 
         return outputs
-    
+
+    def compute_normal(self, inputs, outputs):
+        v1 = outputs[("normal", 0)] # [B, 3, H, W]
+        v1_unit = v1 / (v1.norm(dim=1, keepdim=True) + 1e-8)  # 避免除0
+        gaussians_per_pixel = self.cfg.model.gaussians_per_pixel
+        B = self.cfg.data_loader.batch_size
+        H, W = outputs["gauss_rotation"].shape[2:]
+        gauss_rotation = outputs["gauss_rotation"].view(B, gaussians_per_pixel, 4, H, W)
+        a = 2 * torch.pi *  gauss_rotation[:, 0, 0]
+        qs =  rotation_quaternion_from_negx_to_b(v1_unit, a)
+        gauss_rotation[:, 0] = gauss_rotation[:, 0] - gauss_rotation[:, 0] + qs
+        
+
     def compute_gauss_means(self, inputs, outputs):
         cfg = self.cfg
         scale = self.cfg.model.scales[0]

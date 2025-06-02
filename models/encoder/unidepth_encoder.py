@@ -132,6 +132,7 @@ class UniDepthExtended(nn.Module):
         else:
             outputs_gauss[("depth", 0)] = depth_outs["depth"]
         
+        outputs_gauss[("normal", 0)] = depth_outs["normal"]
         # predict multiple gaussian parameters
         gauss_outs = dict()
         for i in range(self.cfg.model.gaussians_per_pixel):

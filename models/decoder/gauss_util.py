@@ -12,8 +12,8 @@
 import torch
 import numpy as np
 import math
-from diff_surfel_rasterization import GaussianRasterizationSettings, GaussianRasterizer # 改为2DGS
-# from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer # 原3DGS
+# from diff_surfel_rasterization import GaussianRasterizationSettings, GaussianRasterizer # 改为2DGS
+from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer # 原3DGS
 
 
 def getProjectionMatrix(znear, zfar, fovX, fovY, pX=0.0, pY=0.0):
@@ -106,7 +106,8 @@ def render_predicted(cfg,
         "prefiltered": False,
         "debug": False
     }
-    if cfg.model.renderer_w_pose:
+    # if cfg.model.renderer_w_pose:
+    if True:
         kvargs |= {"projmatrix_raw": proj_mtrx}
 
     # Set up rasterization configuration
@@ -124,8 +125,8 @@ def render_predicted(cfg,
     rotations = None
     cov3D_precomp = None
 
-    # scales = pc["scaling"] # .contiguous()   # 原3DGS
-    scales = pc["scaling"][:, :2] # .contiguous()  # 现2DGS只用2个scale方向
+    scales = pc["scaling"] # .contiguous()   # 原3DGS
+    # scales = pc["scaling"][:, :2] # .contiguous()  # 现2DGS只用2个scale方向
     rotations = pc["rotation"] # .contiguous()
 
     # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors

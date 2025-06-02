@@ -94,7 +94,7 @@ class ResnetEncoder(nn.Module):
         x = (input_image - 0.45) / 0.225
         x = encoder.conv1(x)
 
-        if self.bn_order == "pre_bn":
+        if self.bn_order == "pre_bn": # 走这里
             # Concatenating pre-norm features allows us to 
             # keep the scale and shift of RGB colours 
             # and recover them at output

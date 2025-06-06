@@ -1,6 +1,7 @@
 defaults:
   - depth: unidepth
-  - backbone: resnet
+  - backbone: swin
+  # - backbone: resnet
 
 name: unidepth
 frame_ids: [0, -1, 1]

@@ -85,7 +85,7 @@ class ResnetEncoder(nn.Module):
             self.encoder = model(weights=weights) # torchvision.models.resnet50(weights=weights)即torch自带预训练的模型
 
         if num_layers > 34:
-            self.num_ch_enc[1:] *= 4  # 因此50层的输出通道数是18层的4倍，即256, 256, 512, 1024, 2048
+            self.num_ch_enc[1:] *= 4  # 因此50层的输出通道数是18层的4倍，即64, 256, 512, 1024, 2048
 
     def forward(self, input_image):
         encoder = self.encoder

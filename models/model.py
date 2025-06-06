@@ -98,7 +98,7 @@ class GaussianPredictor(nn.Module):
         
         self.compute_gauss_means(inputs, outputs) # 计算真正的高斯中心，在增加outputs["gauss_means"]属性（xyz加偏移量）
 
-        self.compute_normal(inputs, outputs)
+        # self.compute_normal(inputs, outputs)
 
         if cfg.model.gaussian_rendering:
             self.process_gt_poses(inputs, outputs)

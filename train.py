@@ -17,6 +17,9 @@ from evaluation.evaluator import Evaluator
 from datasets.util import create_datasets
 from trainer import Trainer
 
+from torch.cuda.amp import autocast, GradScaler
+
+scaler = GradScaler()  # 初始化一次即可
 
 def run_epoch(fabric,
               trainer,
@@ -33,21 +36,32 @@ def run_epoch(fabric,
 
     if fabric.is_global_zero:
         logging.info("Training on epoch {}".format(trainer.epoch))
+   
+    # 梯度累计
+    accum_steps = 4
 
     for batch_idx, inputs in enumerate(train_loader):
         # instruct the model which novel frames to render
         inputs["target_frame_ids"] = cfg.model.gauss_novel_frames
 
         # 这样吗？
-        losses, outputs = trainer(inputs)
+        with autocast():  # 自动混合精度
+            losses, outputs = trainer(inputs)
+            loss = losses["loss/total"] / accum_steps
+        # losses, outputs = trainer(inputs)
+        scaler.scale(loss).backward()
+        # fabric.backward(losses["loss/total"])
+        step = trainer.step
+        
+        if (step + 1) % accum_steps == 0:
+            # optimizer.step()
+            scaler.step(optimiser)           # 使用 scaler 而不是 optimizer.step()
+            scaler.update()
+            optimiser.zero_grad()
 
-        optimiser.zero_grad(set_to_none=True)
-        fabric.backward(losses["loss/total"])
-        optimiser.step()
         if ema is not None:
             ema.update()
         
-        step = trainer.step
 
         early_phase = batch_idx % trainer.cfg.run.log_frequency == 0 and step < 6000
         if fabric.is_global_zero:
@@ -66,12 +80,14 @@ def run_epoch(fabric,
             if step % cfg.run.save_frequency == 0 and step != 0: # save_frequency:5000
                 trainer.model.save_model(optimiser, step, ema)
             # save the validation results
-            early_phase = (step < 6000) and (step % 500 == 0)
+            early_phase = (step < 6000) and (step % 200 == 0)
+            # early_phase = (step < 6000) and (step % 500 == 0)
             if (early_phase or step % cfg.run.val_frequency == 0): # and step != 0: # val_frequency:5000
                 model_eval = ema if ema is not None else trainer.model
                 trainer.validate(model_eval, evaluator, val_loader, device=fabric.device)
 
-        if (early_phase or step % cfg.run.val_frequency == 0): # and step != 0:
+        if (early_phase or step % 200 == 0): # and step != 0:
+        # if (early_phase or step % cfg.run.val_frequency == 0): # and step != 0:
             torch.cuda.empty_cache()
             
         trainer.step += 1
@@ -86,6 +102,8 @@ def main(cfg: DictConfig):
     hydra_cfg = HydraConfig.get()
     # set up the output directory
     output_dir = hydra_cfg['runtime']['output_dir']
+    # output_dir = r"/home/user/mydisk/3DGS_code/flash3d/exp/2025-06-03/00-27-31"
+    # print(os.getcwd())
     os.chdir(output_dir)
     logging.info(f"Working dir: {output_dir}")
 
@@ -139,6 +157,10 @@ def main(cfg: DictConfig):
     elif cfg.train.load_weights_folder:
         model.load_model(cfg.train.load_weights_folder)
     trainer, optimiser = fabric.setup(trainer, optimiser)
+    # trainer.step = 340001
+    lr_scheduler = optim.lr_scheduler.LambdaLR(
+        optimiser, lr_lambda
+    )
 
     # set up dataset
     train_dataset, train_loader = create_datasets(cfg, split="train")

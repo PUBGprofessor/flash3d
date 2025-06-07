@@ -10,7 +10,7 @@ class SwinEncoder(nn.Module):
         super(SwinEncoder, self).__init__()
 
         self.bn_order = bn_order
-        self.model: SwinTransformer = swin_base_patch4_window7_224(pretrained=pretrained)
+        # self.model: SwinTransformer = swin_base_patch4_window7_224(pretrained=pretrained)
         self.model: SwinTransformer = create_model(
                 'swin_base_patch4_window7_224',
                 pretrained=True,

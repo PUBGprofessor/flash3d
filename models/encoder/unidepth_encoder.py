@@ -11,6 +11,7 @@ from torchvision.transforms import ToTensor
 from torchvision.transforms.functional import to_pil_image
 to_tensor = ToTensor()
 
+
 class UniDepthExtended(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -20,18 +21,20 @@ class UniDepthExtended(nn.Module):
         # 深度预测模型
         # 这里使用了lpiccinelli-eth/UniDepth的预训练模型
         # 调用方法为self.unidepth.infer(inputs["color_aug", 0, 0], intrinsics=inputs[("K_src", 0)])
+        # with torch.device("cpu"):
         self.unidepth = torch.hub.load(
             "lpiccinelli-eth/UniDepth", "UniDepth", version=cfg.model.depth.version, 
             backbone=cfg.model.depth.backbone, pretrained=True, trust_repo=True, 
             force_reload=True
-        )
+        ).to("cuda:1")
 
-        # self.StableNormal = torch.hub.load(
-        #     "Stable-X/StableNormal", 
-        #     "StableNormal_turbo", 
-        #     trust_repo=True, 
-        #     yoso_version='yoso-normal-v0-3'
-        # )
+        self.StableNormal = torch.hub.load(
+            "Stable-X/StableNormal", 
+            "StableNormal_turbo", 
+            trust_repo=True, 
+            yoso_version='yoso-normal-v0-3'
+        )
+        # self.StableNormal = move_pipeline_to_device(self.StableNormal_0, "cuda:1")  # 将模型移动到正确的设备上
 
         self.parameters_to_train = []
 
@@ -60,7 +63,7 @@ class UniDepthExtended(nn.Module):
             self.encoder = SwinEncoder(pretrained=True, bn_order="pre_bn", desired_height=320, desired_width=448)
             old_proj = self.encoder.patch_embed.proj
             self.encoder.patch_embed.proj = torch.nn.Conv2d(
-                in_channels=4,  # 7通道输入（RGB + 深度 + 法向图）
+                in_channels=7,  # 7通道输入（RGB + 深度 + 法向图）
                 out_channels=old_proj.out_channels,
                 kernel_size=old_proj.kernel_size,
                 stride=old_proj.stride,
@@ -68,29 +71,30 @@ class UniDepthExtended(nn.Module):
                 bias=old_proj.bias is not None
             )
             self.encoder.cov = nn.Conv2d(
-            in_channels=4,  # 输入通道数，假设输入是 RGB + 深度 + 法线图
+            in_channels=7,  # 输入通道数，假设输入是 RGB + 深度 + 法线图
             out_channels=32,  # 输出通道数，假设输出是 RGB 图像
             kernel_size=1,  # 卷积核大小为 1x1
             stride=1,  # 步幅为 1
             padding=0,  # 无填充
-            )
+            )#.to("cuda:1")  # 将cov层移动到1设备上
+            # self.encoder.to("cuda:1")  # 将编码器移动到1设备上
             self.parameters_to_train += [{"params": self.encoder.parameters()}]
 
 
-            models = {}
-            if cfg.model.gaussians_per_pixel > 1:
-                # 如果需要预测后面的高斯分布，则需要使用ResnetDepthDecoder（一个DepthDecoder预测全部）
-                models["depth"] = ResnetDepthDecoder(cfg=cfg, num_ch_enc=self.encoder.num_ch_enc)
-                self.parameters_to_train +=[{"params": models["depth"].parameters()}]
-            for i in range(cfg.model.gaussians_per_pixel):
-                # 预测其他高斯参数
-                models["gauss_decoder_"+str(i)] = ResnetDecoder(cfg=cfg,num_ch_enc=self.encoder.num_ch_enc)
-                self.parameters_to_train += [{"params": models["gauss_decoder_"+str(i)].parameters()}]
-                if cfg.model.one_gauss_decoder:
-                    break
+        models = {}
+        if cfg.model.gaussians_per_pixel > 1:
+            # 如果需要预测后面的高斯分布，则需要使用ResnetDepthDecoder（一个DepthDecoder预测全部）
+            models["depth"] = ResnetDepthDecoder(cfg=cfg, num_ch_enc=self.encoder.num_ch_enc)
+            self.parameters_to_train +=[{"params": models["depth"].parameters()}]
+        for i in range(cfg.model.gaussians_per_pixel):
+            # 预测其他高斯参数
+            models["gauss_decoder_"+str(i)] = ResnetDecoder(cfg=cfg,num_ch_enc=self.encoder.num_ch_enc)
+            self.parameters_to_train += [{"params": models["gauss_decoder_"+str(i)].parameters()}]
+            if cfg.model.one_gauss_decoder:
+                break
 
-            # 此时self.models里面有。。。
-            self.models = nn.ModuleDict(models)
+        # 此时self.models里面有。。。
+        self.models = nn.ModuleDict(models)
 
     def get_parameter_groups(self):
         # only the resnet encoder and gaussian parameter decoder are optimisable
@@ -106,24 +110,33 @@ class UniDepthExtended(nn.Module):
         else:
             with torch.no_grad():
                 intrinsics = inputs[("K_src", 0)] if ("K_src", 0) in inputs.keys() else None # 内参矩阵
-                depth_outs = self.unidepth.infer(inputs["color_aug", 0, 0], intrinsics=intrinsics)
+                # depth_outs = self.unidepth.infer(inputs["color_aug", 0, 0], intrinsics=intrinsics)
+                depth_outs = self.unidepth.infer(torch.tensor(inputs["color_aug", 0, 0].to("cuda:1")), intrinsics=torch.tensor(intrinsics, device="cuda:1"))
+                # depth_outs = self.unidepth.infer(torch.tensor(inputs["color_aug", 0, 0], device="cuda:1"), intrinsics=torch.tensor(intrinsics, device="cuda:1"))
+                inputs["color_aug", 0, 0].to("cuda:0")
+                depth_outs = {k: v.to("cuda:0") if isinstance(v, torch.Tensor) else v for k, v in depth_outs.items()}   # 将输出移动到主设备上
 
         # 这里的depth_outs["depth"]是第一层高斯的深度，形状为(B, 1, H, W)
 
-        # # 如果已有的法向图，则直接使用，没有则使用StableNormal预测
-        # if ('normal', 0, 0) in inputs.keys() and inputs[('normal', 0, 0)] is not None:
-        #     depth_outs = dict()
-        #     depth_outs["normal"] = inputs[('normal', 0, 0)]
-        # else:
-        #     with torch.no_grad():
-        #         depth_outs["normal"] = []
-        #         for i in range(inputs["color_aug", 0, 0].shape[0]):
-        #             img_tensor = inputs["color_aug", 0, 0][i]  # [C, H, W]
-        #             img_pil = to_pil_image(img_tensor)
-        #             normal_pil = self.StableNormal(img_pil)  # 结果是 PIL.Image
-        #             normal_tensor = to_tensor(normal_pil)  # 转为 Tensor，shape: [3, H, W]
-        #             depth_outs["normal"].append(normal_tensor)
-        #         depth_outs["normal"] = torch.stack(depth_outs["normal"]).to("cuda")  # [B, 3, H, W]
+        # 如果已有的法向图，则直接使用，没有则使用StableNormal预测
+        if ('normal', 0, 0) in inputs.keys() and inputs[('normal', 0, 0)] is not None:
+            depth_outs = dict()
+            depth_outs["normal"] = inputs[('normal', 0, 0)]
+        else:
+            with torch.no_grad():
+                depth_outs["normal"] = []
+                for i in range(inputs["color_aug", 0, 0].shape[0]):
+                    img_tensor = inputs["color_aug", 0, 0][i].to("cuda:1")  # [C, H, W]
+                    # print(img_tensor.device)
+                    # print(self.StableNormal.device)
+                    img_pil = to_pil_image(img_tensor)
+                    # self.StableNormal.to("cuda:1")   # 确保模型在正确的设备上
+                    # print(next(self.StableNormal.parameters()).device)
+
+                    normal_pil = self.StableNormal(img_pil) # 结果是 PIL.Image
+                    normal_tensor = to_tensor(normal_pil).to("cuda:0")  # 转为 Tensor，shape: [3, H, W]
+                    depth_outs["normal"].append(normal_tensor)
+                depth_outs["normal"] = torch.stack(depth_outs["normal"]).to("cuda")  # [B, 3, H, W]
 
         outputs_gauss = {}
 
@@ -136,10 +149,16 @@ class UniDepthExtended(nn.Module):
         else:
             input = inputs["color_aug", 0, 0]
 
-        # input = torch.cat([input, depth_outs["normal"]], dim=1) # 拼接法向图和RGB图（共7 * H * W）
+        input = torch.cat([input, depth_outs["normal"]], dim=1) # 拼接法向图和RGB图（共7 * H * W）
         # input = torch.cat([input, (depth_outs["normal"] + 1) * 100], dim=1) # 拼接法向图和RGB图（共7 * H * W）
         # encode the input image
-        encoded_features = self.encoder(input)
+        # encoded_features = self.encoder(input)  # 编码器输出的特征，形状为 (B, C, H, W)，C是通道数
+        if next(self.encoder.parameters()).device != "cuda:1":
+            self.encoder.to("cuda:1")  # 确保编码器在正确的设备上
+
+        encoded_features = self.encoder(input.to("cuda:1"))
+        for i in range(len(encoded_features)):
+            encoded_features[i] = encoded_features[i].to("cuda:0")
 
         # predict multiple gaussian depths
         if self.cfg.model.gaussians_per_pixel > 1:
@@ -157,7 +176,7 @@ class UniDepthExtended(nn.Module):
         else:
             outputs_gauss[("depth", 0)] = depth_outs["depth"]
         
-        # outputs_gauss[("normal", 0)] = depth_outs["normal"]
+        outputs_gauss[("normal", 0)] = depth_outs["normal"]
         # predict multiple gaussian parameters
         gauss_outs = dict()
         for i in range(self.cfg.model.gaussians_per_pixel):

@@ -21,6 +21,14 @@ from torch.cuda.amp import autocast, GradScaler
 
 scaler = GradScaler()  # 初始化一次即可
 
+def move_pipeline_to_device(pipeline, device):
+    for name, module in vars(pipeline).items():
+        if isinstance(module, torch.nn.Module):
+            module.to(device)
+        elif isinstance(module, torch.Tensor):
+            setattr(pipeline, name, module.to(device))
+    return pipeline
+
 def run_epoch(fabric,
               trainer,
               ema,
@@ -103,6 +111,7 @@ def main(cfg: DictConfig):
     # set up the output directory
     output_dir = hydra_cfg['runtime']['output_dir']
     # output_dir = r"/home/user/mydisk/3DGS_code/flash3d/exp/2025-06-03/00-27-31"
+    # output_dir = r"/home/user/mydisk/3DGS_code/flash3d/exp/2025-06-07/16-40-54"
     # print(os.getcwd())
     os.chdir(output_dir)
     logging.info(f"Working dir: {output_dir}")
@@ -117,6 +126,7 @@ def main(cfg: DictConfig):
         strategy=DDPStrategy(find_unused_parameters=True),
         precision=cfg.train.mixed_precision
     )
+    print(f"Using {cfg.train.mixed_precision} precision")
     fabric.launch()
     fabric.barrier()
     print("Loaded datasets")
@@ -156,8 +166,14 @@ def main(cfg: DictConfig):
         model.load_model(ckpt_dir, optimiser=optimiser)
     elif cfg.train.load_weights_folder:
         model.load_model(cfg.train.load_weights_folder)
-    trainer, optimiser = fabric.setup(trainer, optimiser)
-    # trainer.step = 340001
+    # trainer, optimiser = fabric.setup(trainer, optimiser)
+
+    # trainer.model.models["unidepth_extended"].unidepth = trainer.model.models["unidepth_extended"].unidepth.to("cuda:1")
+    trainer.model.models["unidepth_extended"].StableNormal = move_pipeline_to_device(trainer.model.models["unidepth_extended"].StableNormal, "cuda:1")  # 将模型移动到正确的设备上
+    # trainer.model.models["unidepth_extended"].encoder = move_pipeline_to_device(trainer.model.models["unidepth_extended"].encoder, "cuda:1")  # 将模型移动到正确的设备上
+    trainer.model.models["unidepth_extended"].encoder = trainer.model.models["unidepth_extended"].encoder.to("cuda:1")  # 将模型移动到正确的设备上
+
+    # trainer.step = 10001
     lr_scheduler = optim.lr_scheduler.LambdaLR(
         optimiser, lr_lambda
     )
